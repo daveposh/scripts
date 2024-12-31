@@ -1,76 +1,68 @@
 <#
 .SYNOPSIS
-    Uploads a CA certificate to Cloudflare for origin authentication.
+    Uploads a CA certificate to Cloudflare for mTLS and checks its associations.
 
 .DESCRIPTION
-    This script uploads a CA certificate to Cloudflare for use with origin authentication.
-    It can be used to configure mutual TLS (mTLS) authentication for your Cloudflare-protected services.
+    This script uploads a CA certificate to Cloudflare for mutual TLS (mTLS) authentication
+    and verifies any existing associations. It supports both modern Bearer token and legacy
+    API key authentication methods.
 
 .PARAMETER CertificateFile
-    Path to the PEM-formatted CA certificate file.
+    Path to the CA certificate file to upload.
+
+.PARAMETER PrivateKeyFile
+    Optional. Path to the private key file if you want to upload it with the certificate.
 
 .PARAMETER Hostname
-    The hostname where this CA certificate will be applied.
+    Hostname to use for the certificate name in Cloudflare.
 
 .PARAMETER CloudflareApiToken
-    Your Cloudflare API key (Global API Key). If not provided, the script will check the CLOUDFLARE_API_KEY environment variable,
-    then look for a key file, and finally prompt for manual entry.
-
-.PARAMETER CloudflareApiTokenFile
-    Path to a file containing your Cloudflare API token.
-
-.PARAMETER CloudflareZoneId
-    Your Cloudflare Zone ID. If not provided, the script will check the CLOUDFLARE_ZONE_ID environment variable.
+    Cloudflare API token for authentication. Can also be set via CLOUDFLARE_API_TOKEN environment variable.
 
 .PARAMETER CloudflareEmail
-    Your Cloudflare account email. If not provided, the script will check the CLOUDFLARE_EMAIL environment variable,
-    then prompt for manual entry.
+    Cloudflare account email. Required when using API key authentication. Can also be set via CLOUDFLARE_EMAIL environment variable.
+
+.PARAMETER AccountId
+    Cloudflare account ID. Can also be set via CLOUDFLARE_ACCOUNT_ID environment variable.
+
+.PARAMETER UseAuthKey
+    Switch to use legacy API key authentication instead of Bearer token.
 
 .EXAMPLE
-    # Using environment variables
-    $env:CLOUDFLARE_API_KEY = "your-api-key"
-    $env:CLOUDFLARE_EMAIL = "your-email@example.com"
-    $env:CLOUDFLARE_ZONE_ID = "your-zone-id"
-    .\Upload-CloudFlareCACert.ps1 -CertificateFile ".\ca.pem" -Hostname "api.example.com"
+    # Using Bearer token authentication (recommended)
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Hostname "example.com" -CloudflareApiToken "your-token"
 
 .EXAMPLE
-    # Using direct parameters
-    .\Upload-CloudFlareCACert.ps1 `
-        -CertificateFile ".\ca.pem" `
-        -Hostname "api.example.com" `
-        -CloudflareApiToken "your-api-key" `
-        -CloudflareEmail "your-email@example.com" `
-        -CloudflareZoneId "your-zone-id"
+    # Using API key authentication
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Hostname "example.com" -CloudflareApiToken "your-key" -CloudflareEmail "your-email" -UseAuthKey
 
 .EXAMPLE
-    # Using an API token file
-    .\Upload-CloudFlareCACert.ps1 `
-        -CertificateFile ".\ca.pem" `
-        -Hostname "api.example.com" `
-        -CloudflareApiTokenFile ".\token.txt" `
-        -CloudflareZoneId "your-zone-id"
-
-.EXAMPLE
-    # Interactive mode (will prompt for API token)
-    .\Upload-CloudFlareCACert.ps1 `
-        -CertificateFile ".\ca.pem" `
-        -Hostname "api.example.com" `
-        -CloudflareZoneId "your-zone-id"
+    # Including private key
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -PrivateKeyFile "key.pem" -Hostname "example.com" -CloudflareApiToken "your-token"
 
 .NOTES
-    Author: Your Name
-    Last Modified: [Date]
-    The script will look for credentials in this order:
-    1. Direct parameters
-    2. Environment variables
-    3. API token file (if specified)
-    4. Interactive prompt
+    The script will:
+    1. Upload the CA certificate to Cloudflare
+    2. Display the certificate details
+    3. Check and display any mTLS associations
+    4. Save both certificate details and associations to a log file
+
+.FUNCTIONALITY
+    - Uploads CA certificates to Cloudflare
+    - Supports both modern and legacy authentication methods
+    - Optional private key upload
+    - Automatic association checking
+    - Detailed console output
+    - Log file generation
 #>
 
 # Script parameters
 param(
     [Parameter(Mandatory=$true)]
     [string]$CertificateFile,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$PrivateKeyFile,
     
     [Parameter(Mandatory=$true)]
     [string]$Hostname,
@@ -79,13 +71,13 @@ param(
     [string]$CloudflareApiToken = $env:CLOUDFLARE_API_KEY,
     
     [Parameter(Mandatory=$false)]
-    [string]$CloudflareApiTokenFile,
+    [string]$CloudflareEmail = $env:CLOUDFLARE_EMAIL,
     
     [Parameter(Mandatory=$false)]
-    [string]$CloudflareZoneId = $env:CLOUDFLARE_ZONE_ID,
-
+    [string]$AccountId = $env:CLOUDFLARE_ACCOUNT_ID,
+    
     [Parameter(Mandatory=$false)]
-    [string]$CloudflareEmail = $env:CLOUDFLARE_EMAIL
+    [switch]$UseAuthKey
 )
 
 # Check for API token from file if provided
@@ -109,11 +101,6 @@ if ([string]::IsNullOrEmpty($CloudflareApiToken)) {
 # Validate API token is not empty
 if ([string]::IsNullOrEmpty($CloudflareApiToken)) {
     throw "Cloudflare API Token is required. Please provide it through one of the available methods."
-}
-
-# Validate environment variables if not provided as parameters
-if ([string]::IsNullOrEmpty($CloudflareApiToken)) {
-    throw "Cloudflare API Token is not set. Please set CLOUDFLARE_API_TOKEN environment variable or provide it as a parameter."
 }
 
 # Check for Account ID in environment variables or parameters
@@ -177,20 +164,88 @@ try {
     throw "Failed to read certificate file: $_"
 }
 
-# Prepare request headers and body
+# Read private key if provided
+$privateKey = $null
+if ($PrivateKeyFile) {
+    if (Test-Path $PrivateKeyFile) {
+        $privateKey = Get-Content $PrivateKeyFile -Raw
+        $privateKey = $privateKey.Replace("`r`n", "\n").Replace("`n", "\n").TrimEnd("\n")
+    } else {
+        throw "Private key file not found at path: $PrivateKeyFile"
+    }
+}
+
+# Prepare request headers based on authentication method
 $headers = @{
-    'Authorization' = "Bearer $CloudflareApiToken"
     'Content-Type' = 'application/json'
 }
 
+if ($UseAuthKey) {
+    $headers['X-Auth-Email'] = $CloudflareEmail
+    $headers['X-Auth-Key'] = $CloudflareApiToken
+} else {
+    $headers['Authorization'] = "Bearer $CloudflareApiToken"
+}
+
+# Prepare request body
 $body = @{
-    certificate = $certContent
-    name = "${Hostname}_ca_cert"
-    type = "ca"
-} | ConvertTo-Json
+    certificates = $certContent
+    name = "${Hostname}_ca_cert_for_mtls"
+    ca = $true
+}
+
+# Add private key if provided
+if ($privateKey) {
+    $body['private_key'] = $privateKey
+}
+
+$body = $body | ConvertTo-Json
 
 # Construct the API URL
 $uri = "https://api.cloudflare.com/client/v4/accounts/$AccountId/mtls_certificates"
+
+# Add new function to check associations
+function Get-MTLSAssociations {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$CertificateId,
+        [Parameter(Mandatory=$true)]
+        [string]$AccountId,
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers
+    )
+
+    $uri = "https://api.cloudflare.com/client/v4/accounts/$AccountId/mtls_certificates/$CertificateId/associations"
+    
+    try {
+        Write-Host "`nChecking mTLS certificate associations..." -ForegroundColor Cyan
+        $response = Invoke-RestMethod -Uri $uri -Method Get -Headers $Headers
+        
+        if ($response.success) {
+            if ($response.result.Count -eq 0) {
+                Write-Host "No associations found for this certificate." -ForegroundColor Yellow
+            } else {
+                Write-Host "`nCertificate Associations:" -ForegroundColor Cyan
+                Write-Host "------------------------" -ForegroundColor Cyan
+                foreach ($association in $response.result) {
+                    $association.PSObject.Properties | ForEach-Object {
+                        Write-Host "$($_.Name): $($_.Value)" -ForegroundColor Green
+                    }
+                    Write-Host "------------------------" -ForegroundColor Cyan
+                }
+            }
+            return $response.result
+        } else {
+            Write-Host "Failed to retrieve associations:" -ForegroundColor Red
+            $response.errors | ForEach-Object {
+                Write-Host "Error: $($_.message)" -ForegroundColor Red
+            }
+        }
+    } catch {
+        Write-Host "Error checking associations: $_" -ForegroundColor Red
+        Write-Host "Response: $($_.ErrorDetails.Message)" -ForegroundColor Red
+    }
+}
 
 try {
     Write-Host "Uploading CA certificate for $Hostname..."
@@ -200,7 +255,33 @@ try {
     
     if ($response.success) {
         Write-Host "Successfully uploaded CA certificate" -ForegroundColor Green
-        Write-Host "Certificate ID: $($response.result.id)" -ForegroundColor Green
+        
+        # Print all result fields
+        Write-Host "`nCertificate Details:" -ForegroundColor Cyan
+        Write-Host "------------------------" -ForegroundColor Cyan
+        $response.result.PSObject.Properties | ForEach-Object {
+            if ($_.Name -eq "id") {
+                Write-Host "`nCertificate ID: " -NoNewline -ForegroundColor Yellow
+                Write-Host "$($_.Value)" -ForegroundColor White -BackgroundColor DarkBlue
+                Write-Host ""
+                
+                # Check associations for the newly uploaded certificate
+                $associations = Get-MTLSAssociations -CertificateId $_.Value -AccountId $AccountId -Headers $headers
+                
+                # Add associations to log file
+                $logContent = @{
+                    certificate = $response.result
+                    associations = $associations
+                }
+                $logFile = "cloudflare_cert_upload_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+                $logContent | ConvertTo-Json -Depth 10 | Out-File $logFile
+                Write-Host "`nResults saved to: $logFile" -ForegroundColor Green
+            } else {
+                Write-Host "$($_.Name): $($_.Value)" -ForegroundColor Green
+            }
+        }
+        Write-Host "------------------------`n" -ForegroundColor Cyan
+        
     } else {
         Write-Host "Failed to upload certificate:" -ForegroundColor Red
         $response.errors | ForEach-Object {
