@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# Default values
+HOST=""
+PORT="443"
+HEADER=""
+
+# Help function
+show_help() {
+    echo "Usage: $0 [-h hostname] [-p port] [-H header]"
+    echo "Options:"
+    echo "  -h    Hostname to test"
+    echo "  -p    Port number (default: 443)"
+    echo "  -H    Additional HTTP header (format: 'Name: Value')"
+    echo "  -?    Show this help message"
+    exit 1
+}
+
+# Parse command line arguments
+while getopts "h:p:H:?" opt; do
+    case $opt in
+        h) HOST="$OPTARG" ;;
+        p) PORT="$OPTARG" ;;
+        H) HEADER="$OPTARG" ;;
+        ?) show_help ;;
+    esac
+done
+
+# Check if hostname is provided
+if [ -z "$HOST" ]; then
+    echo "Error: Hostname is required"
+    show_help
+fi
+
+# Function to test SSL certificate
+test_ssl() {
+    echo "Testing SSL connection to $HOST:$PORT"
+    echo "----------------------------------------"
+    
+    # Basic SSL connection test
+    echo "SSL Certificate Information:"
+    if [ -z "$HEADER" ]; then
+        openssl s_client -connect "${HOST}:${PORT}" -showcerts </dev/null 2>/dev/null | openssl x509 -noout -text
+    else
+        echo "Using additional header: $HEADER"
+        (
+            echo "GET / HTTP/1.1"
+            echo "Host: $HOST"
+            echo "$HEADER"
+            echo
+        ) | openssl s_client -connect "${HOST}:${PORT}" -showcerts 2>/dev/null | openssl x509 -noout -text
+    fi
+    
+    # Test supported protocols
+    echo -e "\nTesting Supported Protocols:"
+    for version in ssl2 ssl3 tls1 tls1_1 tls1_2 tls1_3; do
+        result=$(openssl s_client -connect "${HOST}:${PORT}" -"$version" </dev/null 2>&1)
+        if echo "$result" | grep -q "Connected"; then
+            echo "$version: Supported"
+        else
+            echo "$version: Not supported"
+        fi
+    done
+    
+    # Test cipher suites
+    echo -e "\nSupported Cipher Suites:"
+    openssl ciphers -v | tr ':' '\n'
+    
+    # Certificate expiration check
+    echo -e "\nCertificate Expiration:"
+    openssl s_client -connect "${HOST}:${PORT}" </dev/null 2>/dev/null | openssl x509 -noout -dates
+}
+
+# Run the test
+test_ssl
