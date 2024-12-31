@@ -138,12 +138,29 @@ try {
     Write-Host "Serial:       $($cert.SerialNumber)"
     Write-Host "------------------------`n" -ForegroundColor Cyan
 
-    # Verify it's a CA certificate
-    $isCA = $cert.Extensions | Where-Object { $_.Oid.FriendlyName -eq "Basic Constraints" } | 
-                              ForEach-Object { $_.Format(1) -match "Certificate Authority=True" }
+    # Verify it's a CA certificate - fixed validation
+    $basicConstraints = $cert.Extensions | Where-Object { $_.Oid.Value -eq "2.5.29.19" }
+    $isCA = $false
+    if ($basicConstraints) {
+        try {
+            # Convert the extension to BasicConstraints type to safely check CA flag
+            $basicConstraintsExt = [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]$basicConstraints
+            $isCA = $basicConstraintsExt.CertificateAuthority
+        } catch {
+            Write-Host "Warning: Could not parse Basic Constraints extension. Error: $_" -ForegroundColor Yellow
+        }
+    }
     
     if (-not $isCA) {
         Write-Host "Warning: This certificate does not appear to be a CA certificate!" -ForegroundColor Yellow
+        Write-Host "The Basic Constraints extension either doesn't exist or doesn't indicate this is a CA." -ForegroundColor Yellow
+        $proceed = Read-Host "Are you sure you want to continue? (Y/N)"
+        if ($proceed -notmatch "^[Yy]$") {
+            Write-Host "Operation cancelled by user." -ForegroundColor Yellow
+            exit 0
+        }
+    } else {
+        Write-Host "Verified: This is a CA certificate" -ForegroundColor Green
     }
 
     $proceed = Read-Host "Do you want to proceed with uploading this certificate for hostname '$Hostname'? (Y/N)"
