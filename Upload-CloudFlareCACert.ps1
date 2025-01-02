@@ -17,6 +17,9 @@
     Name to use for the certificate name in Cloudflare. This will also be used as the hostname
     for the mTLS association.
 
+.PARAMETER ZoneId
+    Cloudflare zone ID. Can also be set via CLOUDFLARE_ZONE_ID environment variable.
+
 .PARAMETER CloudflareApiToken
     Cloudflare API token for authentication. Can also be set via CLOUDFLARE_API_TOKEN environment variable.
 
@@ -70,6 +73,9 @@ param(
     
     [Parameter(Mandatory=$true)]
     [string]$Name,
+    
+    [Parameter(Mandatory=$true)]
+    [string]$ZoneId,
     
     [Parameter(Mandatory=$false)]
     [string]$CloudflareApiToken = $env:CLOUDFLARE_API_KEY,
@@ -276,33 +282,39 @@ function Set-MTLSAssociation {
         [Parameter(Mandatory=$true)]
         [string]$Hostname,
         [Parameter(Mandatory=$true)]
-        [string]$AccountId,
+        [string]$ZoneId,
         [Parameter(Mandatory=$true)]
         [hashtable]$Headers
     )
 
-    $uri = "https://api.cloudflare.com/client/v4/accounts/$AccountId/mtls_certificates/$CertificateId/associations"
+    $uri = "https://api.cloudflare.com/client/v4/zones/$ZoneId/certificate_authorities/hostname_associations"
     
+    # Create the association body
     $body = @{
-        host = $Hostname
-        status = "active"
+        ca_hostname_associations = @(
+            @{
+                hostname = $Hostname
+                ca_id = $CertificateId
+            }
+        )
     } | ConvertTo-Json
 
     try {
-        Write-Host "`nAssociating certificate with hostname $Hostname..." -ForegroundColor Cyan
-        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $Headers -Body $body
+        Write-Host "`nReplacing hostname associations for $Hostname..." -ForegroundColor Cyan
+        $response = Invoke-RestMethod -Uri $uri -Method Put -Headers $Headers -Body $body
         
         if ($response.success) {
-            Write-Host "Successfully associated certificate with $Hostname" -ForegroundColor Green
+            Write-Host "Successfully updated hostname associations" -ForegroundColor Green
+            Write-Host "Associated $Hostname with certificate $CertificateId" -ForegroundColor Green
             return $response.result
         } else {
-            Write-Host "Failed to create association:" -ForegroundColor Red
+            Write-Host "Failed to update associations:" -ForegroundColor Red
             $response.errors | ForEach-Object {
                 Write-Host "Error: $($_.message)" -ForegroundColor Red
             }
         }
     } catch {
-        Write-Host "Error creating association: $_" -ForegroundColor Red
+        Write-Host "Error updating associations: $_" -ForegroundColor Red
         Write-Host "Response: $($_.ErrorDetails.Message)" -ForegroundColor Red
     }
 }
@@ -317,8 +329,8 @@ try {
         Write-Host "Successfully uploaded CA certificate" -ForegroundColor Green
         $certId = $response.result.id
 
-        # Create association with hostname
-        $association = Set-MTLSAssociation -CertificateId $certId -Hostname $Name -AccountId $AccountId -Headers $headers
+        # Create association with hostname using new ZoneId parameter
+        $association = Set-MTLSAssociation -CertificateId $certId -Hostname $Name -ZoneId $ZoneId -Headers $headers
         
         # Print all result fields
         Write-Host "`nCertificate Details:" -ForegroundColor Cyan
