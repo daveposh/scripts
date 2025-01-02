@@ -13,8 +13,8 @@
 .PARAMETER PrivateKeyFile
     Optional. Path to the private key file if you want to upload it with the certificate.
 
-.PARAMETER Hostname
-    Hostname to use for the certificate name in Cloudflare.
+.PARAMETER Name
+    Name to use for the certificate name in Cloudflare.
 
 .PARAMETER CloudflareApiToken
     Cloudflare API token for authentication. Can also be set via CLOUDFLARE_API_TOKEN environment variable.
@@ -30,15 +30,15 @@
 
 .EXAMPLE
     # Using Bearer token authentication (recommended)
-    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Hostname "example.com" -CloudflareApiToken "your-token"
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Name "example.com" -CloudflareApiToken "your-token" -AccountId "your-account-id"
 
 .EXAMPLE
     # Using API key authentication
-    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Hostname "example.com" -CloudflareApiToken "your-key" -CloudflareEmail "your-email" -UseAuthKey
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Name "example.com" -CloudflareApiToken "your-key" -CloudflareEmail "your-email" -AccountId "your-account-id" -UseAuthKey
 
 .EXAMPLE
     # Including private key
-    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -PrivateKeyFile "key.pem" -Hostname "example.com" -CloudflareApiToken "your-token"
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -PrivateKeyFile "key.pem" -Name "example.com" -CloudflareApiToken "your-token" -AccountId "your-account-id"
 
 .NOTES
     The script will:
@@ -65,7 +65,7 @@ param(
     [string]$PrivateKeyFile,
     
     [Parameter(Mandatory=$true)]
-    [string]$Hostname,
+    [string]$Name,
     
     [Parameter(Mandatory=$false)]
     [string]$CloudflareApiToken = $env:CLOUDFLARE_API_KEY,
@@ -129,7 +129,7 @@ try {
     
     Write-Host "`nCertificate Information:" -ForegroundColor Cyan
     Write-Host "------------------------" -ForegroundColor Cyan
-    Write-Host "Target Host:  $Hostname" -ForegroundColor Green
+    Write-Host "Target Host:  $Name" -ForegroundColor Green
     Write-Host "Subject:      $($cert.Subject)"
     Write-Host "Issuer:       $($cert.Issuer)"
     Write-Host "Valid From:   $($cert.NotBefore)"
@@ -163,7 +163,7 @@ try {
         Write-Host "Verified: This is a CA certificate" -ForegroundColor Green
     }
 
-    $proceed = Read-Host "Do you want to proceed with uploading this certificate for hostname '$Hostname'? (Y/N)"
+    $proceed = Read-Host "Do you want to proceed with uploading this certificate for name '$Name'? (Y/N)"
     if ($proceed -notmatch "^[Yy]$") {
         Write-Host "Operation cancelled by user." -ForegroundColor Yellow
         exit 0
@@ -207,7 +207,7 @@ if ($UseAuthKey) {
 # Prepare request body
 $body = @{
     certificates = $certContent
-    name = "${Hostname}_ca_cert_for_mtls"
+    name = "${Name}_ca_cert_for_mtls"
     ca = $true
 }
 
@@ -265,7 +265,7 @@ function Get-MTLSAssociations {
 }
 
 try {
-    Write-Host "Uploading CA certificate for $Hostname..."
+    Write-Host "Uploading CA certificate for $Name..."
     
     # Make the API request
     $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body

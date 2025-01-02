@@ -29,22 +29,24 @@ A PowerShell script for managing mutual TLS (mTLS) certificates in Cloudflare, s
 
 ## Usage
 
-.\Upload-CloudFlareCACert.ps1 -CertificatePath "path\to\cert.pem" -AccountID "your_account_id" -BearerToken "your_bearer_token"
+.\Upload-CloudFlareCACert.ps1 -CertificatePath "path\to\cert.pem" -Name "example.com" -AccountID "your_account_id" -BearerToken "your_bearer_token"
 
 ### Using Bearer Token Authentication (Recommended)
 
-.\Upload-CloudFlareCACert.ps1 -CertificatePath "path\to\cert.pem" -AccountID "your_account_id" -BearerToken "your_bearer_token"
+```powershell
+.\Upload-CloudFlareCACert.ps1 -CertificatePath "path\to\cert.pem" -Name "example.com" -AccountID "your_account_id" -BearerToken "your_bearer_token"
+```
 
 ### Using Legacy API Key Authentication
 
 ```powershell
-.\Upload-CloudFlareCACert.ps1 -CertificatePath "path\to\cert.pem" -AccountID "your_account_id" -ApiKey "your_api_key" -Email "your_email"
+.\Upload-CloudFlareCACert.ps1 -CertificatePath "path\to\cert.pem" -Name "example.com" -AccountID "your_account_id" -ApiKey "your_api_key" -Email "your_email"
 ```
 
 ### Optional Parameters
 
 - `-PrivateKeyPath`: Path to the private key file (optional)
-- `-Name`: Custom name for the certificate (default: filename)
+- `-Name`: Custom name for the certificate (required)
 - `-Verbose`: Enable detailed logging
 
 ### Environment Variables
