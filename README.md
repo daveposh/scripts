@@ -38,10 +38,16 @@ A PowerShell script for managing mutual TLS (mTLS) certificates in Cloudflare, s
 ```
 
 This will:
-- Upload the certificate
-- Replace any existing associations for the hostname
-- Display the certificate and association details
-- Save the results to a log file
+1. Upload the certificate
+2. Display certificate details
+3. Prompt whether to associate with hostname
+4. If yes:
+   - Replace any existing associations
+   - Verify the association
+   - Display association details
+5. If no:
+   - Display Zone ID for future use
+6. Save results to log file
 
 ### Using Legacy API Key Authentication
 
@@ -65,12 +71,16 @@ The script supports the following environment variables:
 
 ## Certificate Associations
 
-The script automatically:
-1. Replaces any existing hostname associations with the new certificate
-2. Uses the Cloudflare Zone API for association management
-3. Verifies the association was created successfully
-4. Displays all existing associations for the certificate
-5. Includes association details in the log file
+The script will:
+1. Ask if you want to associate the certificate with the specified hostname
+2. If you choose to associate:
+   - Replace any existing hostname associations
+   - Use the Cloudflare Zone API for association management
+   - Verify the association was created successfully
+   - Display all existing associations
+3. If you choose not to associate:
+   - Display the Zone ID for future use
+4. Include all details in the log file
 
 ## Finding Your Zone ID
 

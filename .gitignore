@@ -60,3 +60,5 @@ pids
 .DS_Store
 Thumbs.db
 test_ssl.sh
+test/ca_auth.config
+test/create_private_certificate_authority.sh

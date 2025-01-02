@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Uploads a CA certificate to Cloudflare for mTLS, creates hostname associations, and checks existing associations.
+    Uploads a CA certificate to Cloudflare for mTLS with optional hostname association.
 
 .DESCRIPTION
-    This script uploads a CA certificate to Cloudflare for mutual TLS (mTLS) authentication,
-    creates an association with the specified hostname, and verifies any existing associations. 
+    This script uploads a CA certificate to Cloudflare for mutual TLS (mTLS) authentication.
+    After uploading, it provides the option to create a hostname association and verify the setup.
     It supports both modern Bearer token and legacy API key authentication methods.
 
 .PARAMETER CertificateFile
@@ -15,10 +15,10 @@
 
 .PARAMETER Name
     Name to use for the certificate name in Cloudflare. This will also be used as the hostname
-    for the mTLS association.
+    for the mTLS association if chosen.
 
 .PARAMETER ZoneId
-    Cloudflare zone ID. Can also be set via CLOUDFLARE_ZONE_ID environment variable.
+    Cloudflare zone ID for the domain. Required for hostname associations.
 
 .PARAMETER CloudflareApiToken
     Cloudflare API token for authentication. Can also be set via CLOUDFLARE_API_TOKEN environment variable.
@@ -34,31 +34,35 @@
 
 .EXAMPLE
     # Using Bearer token authentication (recommended)
-    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Name "example.com" -CloudflareApiToken "your-token" -AccountId "your-account-id"
-    # This will upload the certificate and associate it with example.com
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Name "example.com" -ZoneId "your_zone_id" -CloudflareApiToken "your-token" -AccountId "your-account-id"
+    # This will upload the certificate and prompt for hostname association
 
 .EXAMPLE
     # Using API key authentication
-    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Name "example.com" -CloudflareApiToken "your-key" -CloudflareEmail "your-email" -AccountId "your-account-id" -UseAuthKey
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Name "example.com" -ZoneId "your_zone_id" -CloudflareApiToken "your-key" -CloudflareEmail "your-email" -AccountId "your-account-id" -UseAuthKey
 
 .EXAMPLE
     # Including private key
-    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -PrivateKeyFile "key.pem" -Name "example.com" -CloudflareApiToken "your-token" -AccountId "your-account-id"
+    .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -PrivateKeyFile "key.pem" -Name "example.com" -ZoneId "your_zone_id" -CloudflareApiToken "your-token" -AccountId "your-account-id"
 
 .NOTES
     The script will:
     1. Upload the CA certificate to Cloudflare
     2. Display the certificate details
-    3. Create an mTLS association with the specified hostname
-    4. Check and display any existing mTLS associations
-    5. Save both certificate details and associations to a log file
+    3. Prompt for optional hostname association
+    4. If association is chosen:
+       - Create an mTLS association with the specified hostname
+       - Check and display the association details
+    5. If association is skipped:
+       - Display the Zone ID for future use
+    6. Save results to a log file
 
 .FUNCTIONALITY
     - Uploads CA certificates to Cloudflare
-    - Creates hostname associations automatically
+    - Optional hostname association creation
     - Supports both modern and legacy authentication methods
     - Optional private key upload
-    - Automatic association checking
+    - Association verification
     - Detailed console output
     - Log file generation
 #>
@@ -329,34 +333,43 @@ try {
         Write-Host "Successfully uploaded CA certificate" -ForegroundColor Green
         $certId = $response.result.id
 
-        # Create association with hostname using new ZoneId parameter
-        $association = Set-MTLSAssociation -CertificateId $certId -Hostname $Name -ZoneId $ZoneId -Headers $headers
-        
-        # Print all result fields
+        # Print certificate details
         Write-Host "`nCertificate Details:" -ForegroundColor Cyan
         Write-Host "------------------------" -ForegroundColor Cyan
         $response.result.PSObject.Properties | ForEach-Object {
             if ($_.Name -eq "id") {
                 Write-Host "`nCertificate ID: " -NoNewline -ForegroundColor Yellow
                 Write-Host "$($_.Value)" -ForegroundColor White -BackgroundColor DarkBlue
-                Write-Host ""
-                
-                # Check associations for the newly uploaded certificate
-                $associations = Get-MTLSAssociations -CertificateId $_.Value -AccountId $AccountId -Headers $headers
-                
-                # Add associations to log file
-                $logContent = @{
-                    certificate = $response.result
-                    associations = $associations
-                }
-                $logFile = "cloudflare_cert_upload_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-                $logContent | ConvertTo-Json -Depth 10 | Out-File $logFile
-                Write-Host "`nResults saved to: $logFile" -ForegroundColor Green
             } else {
                 Write-Host "$($_.Name): $($_.Value)" -ForegroundColor Green
             }
         }
         Write-Host "------------------------`n" -ForegroundColor Cyan
+
+        # Ask user if they want to create an association
+        $createAssociation = Read-Host "Do you want to associate this certificate with hostname '$Name'? (Y/N)"
+        
+        if ($createAssociation -match "^[Yy]$") {
+            # Create association with hostname using ZoneId
+            $association = Set-MTLSAssociation -CertificateId $certId -Hostname $Name -ZoneId $ZoneId -Headers $headers
+            
+            if ($association) {
+                # Check associations for verification
+                $associations = Get-MTLSAssociations -CertificateId $certId -AccountId $AccountId -Headers $headers
+            }
+        } else {
+            Write-Host "`nSkipping hostname association." -ForegroundColor Yellow
+            Write-Host "You can create an association later using Zone ID: $ZoneId" -ForegroundColor Yellow
+        }
+        
+        # Add results to log file
+        $logContent = @{
+            certificate = $response.result
+            associations = if ($createAssociation -match "^[Yy]$") { $associations } else { "No associations created" }
+        }
+        $logFile = "cloudflare_cert_upload_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        $logContent | ConvertTo-Json -Depth 10 | Out-File $logFile
+        Write-Host "`nResults saved to: $logFile" -ForegroundColor Green
         
     } else {
         Write-Host "Failed to upload certificate:" -ForegroundColor Red
