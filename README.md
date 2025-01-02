@@ -1,13 +1,14 @@
 # Cloudflare mTLS Certificate Management Script
 
-A PowerShell script for managing mutual TLS (mTLS) certificates in Cloudflare, supporting both modern Bearer token and legacy API key authentication methods.
+A PowerShell script for managing mutual TLS (mTLS) certificates in Cloudflare, supporting certificate uploads and hostname associations.
 
 ## Features
 
 - Upload CA certificates to Cloudflare
+- Automatic hostname association creation
 - Support for both modern Bearer token and legacy API key authentication
 - Optional private key upload capability 
-- Automatic association checking
+- Automatic association checking and verification
 - Detailed console output and logging
 - Environment variable support for credentials
 
@@ -28,8 +29,6 @@ A PowerShell script for managing mutual TLS (mTLS) certificates in Cloudflare, s
 3. Have your CA certificate (and optional private key) files accessible
 
 ## Usage
-
-.\Upload-CloudFlareCACert.ps1 -CertificatePath "path\to\cert.pem" -Name "example.com" -AccountID "your_account_id" -BearerToken "your_bearer_token"
 
 ### Using Bearer Token Authentication (Recommended)
 

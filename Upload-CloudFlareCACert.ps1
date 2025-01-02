@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Uploads a CA certificate to Cloudflare for mTLS and checks its associations.
+    Uploads a CA certificate to Cloudflare for mTLS, creates hostname associations, and checks existing associations.
 
 .DESCRIPTION
-    This script uploads a CA certificate to Cloudflare for mutual TLS (mTLS) authentication
-    and verifies any existing associations. It supports both modern Bearer token and legacy
-    API key authentication methods.
+    This script uploads a CA certificate to Cloudflare for mutual TLS (mTLS) authentication,
+    creates an association with the specified hostname, and verifies any existing associations. 
+    It supports both modern Bearer token and legacy API key authentication methods.
 
 .PARAMETER CertificateFile
     Path to the CA certificate file to upload.
@@ -14,7 +14,8 @@
     Optional. Path to the private key file if you want to upload it with the certificate.
 
 .PARAMETER Name
-    Name to use for the certificate name in Cloudflare.
+    Name to use for the certificate name in Cloudflare. This will also be used as the hostname
+    for the mTLS association.
 
 .PARAMETER CloudflareApiToken
     Cloudflare API token for authentication. Can also be set via CLOUDFLARE_API_TOKEN environment variable.
@@ -31,6 +32,7 @@
 .EXAMPLE
     # Using Bearer token authentication (recommended)
     .\Upload-CloudFlareCACert.ps1 -CertificateFile "cert.pem" -Name "example.com" -CloudflareApiToken "your-token" -AccountId "your-account-id"
+    # This will upload the certificate and associate it with example.com
 
 .EXAMPLE
     # Using API key authentication
@@ -44,11 +46,13 @@
     The script will:
     1. Upload the CA certificate to Cloudflare
     2. Display the certificate details
-    3. Check and display any mTLS associations
-    4. Save both certificate details and associations to a log file
+    3. Create an mTLS association with the specified hostname
+    4. Check and display any existing mTLS associations
+    5. Save both certificate details and associations to a log file
 
 .FUNCTIONALITY
     - Uploads CA certificates to Cloudflare
+    - Creates hostname associations automatically
     - Supports both modern and legacy authentication methods
     - Optional private key upload
     - Automatic association checking
@@ -264,6 +268,45 @@ function Get-MTLSAssociations {
     }
 }
 
+# Add new function to associate certificate with hostname
+function Set-MTLSAssociation {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$CertificateId,
+        [Parameter(Mandatory=$true)]
+        [string]$Hostname,
+        [Parameter(Mandatory=$true)]
+        [string]$AccountId,
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers
+    )
+
+    $uri = "https://api.cloudflare.com/client/v4/accounts/$AccountId/mtls_certificates/$CertificateId/associations"
+    
+    $body = @{
+        host = $Hostname
+        status = "active"
+    } | ConvertTo-Json
+
+    try {
+        Write-Host "`nAssociating certificate with hostname $Hostname..." -ForegroundColor Cyan
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $Headers -Body $body
+        
+        if ($response.success) {
+            Write-Host "Successfully associated certificate with $Hostname" -ForegroundColor Green
+            return $response.result
+        } else {
+            Write-Host "Failed to create association:" -ForegroundColor Red
+            $response.errors | ForEach-Object {
+                Write-Host "Error: $($_.message)" -ForegroundColor Red
+            }
+        }
+    } catch {
+        Write-Host "Error creating association: $_" -ForegroundColor Red
+        Write-Host "Response: $($_.ErrorDetails.Message)" -ForegroundColor Red
+    }
+}
+
 try {
     Write-Host "Uploading CA certificate for $Name..."
     
@@ -272,6 +315,10 @@ try {
     
     if ($response.success) {
         Write-Host "Successfully uploaded CA certificate" -ForegroundColor Green
+        $certId = $response.result.id
+
+        # Create association with hostname
+        $association = Set-MTLSAssociation -CertificateId $certId -Hostname $Name -AccountId $AccountId -Headers $headers
         
         # Print all result fields
         Write-Host "`nCertificate Details:" -ForegroundColor Cyan
