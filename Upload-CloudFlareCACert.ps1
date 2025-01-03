@@ -4,6 +4,7 @@
 
 .DESCRIPTION
     This script uploads a CA certificate to Cloudflare for mutual TLS (mTLS) authentication.
+    The certificate is explicitly marked as a CA certificate during upload.
     After uploading, it provides the option to create a hostname association and verify the setup.
     It supports both modern Bearer token and legacy API key authentication methods.
 
@@ -47,8 +48,8 @@
 
 .NOTES
     The script will:
-    1. Upload the CA certificate to Cloudflare
-    2. Display the certificate details
+    1. Upload the CA certificate to Cloudflare (explicitly marked as CA)
+    2. Display the certificate details including CA status
     3. Prompt for optional hostname association
     4. If association is chosen:
        - Create an mTLS association with the specified hostname
@@ -58,7 +59,7 @@
     6. Save results to a log file
 
 .FUNCTIONALITY
-    - Uploads CA certificates to Cloudflare
+    - Uploads CA certificates to Cloudflare (with CA flag)
     - Optional hostname association creation
     - Supports both modern and legacy authentication methods
     - Optional private key upload
@@ -223,6 +224,7 @@ $body = @{
     certificates = $certContent
     name = "${Name}_ca_cert_for_mtls"
     ca = $true
+    type = "ca"
 }
 
 # Add private key if provided

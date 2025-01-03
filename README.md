@@ -38,8 +38,8 @@ A PowerShell script for managing mutual TLS (mTLS) certificates in Cloudflare, s
 ```
 
 This will:
-1. Upload the certificate
-2. Display certificate details
+1. Upload the certificate (marked as CA)
+2. Display certificate details including CA status
 3. Prompt whether to associate with hostname
 4. If yes:
    - Replace any existing associations
