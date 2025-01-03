@@ -70,3 +70,26 @@ curl -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/mtls_c
      }"
 
 echo -e "\nDone!"
+
+# List certificates
+./ca_curl.sh list_certificates
+
+# Create association
+./ca_curl.sh associate_certificate "cert_id" "example.com" "zone_id"
+
+# Or use the one-line commands directly:
+# List certificates
+curl -X GET "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/mtls_certificates" \
+     -H "Authorization: Bearer ${API_TOKEN}" \
+     -H "Content-Type: application/json"
+
+# Create association
+curl -X PUT "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/certificate_authorities/hostname_associations" \
+     -H "Authorization: Bearer ${API_TOKEN}" \
+     -H "Content-Type: application/json" \
+     --data '{
+       "ca_hostname_associations": [{
+         "hostname": "example.com",
+         "ca_id": "your_cert_id"
+       }]
+     }'
