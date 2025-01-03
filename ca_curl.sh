@@ -15,19 +15,8 @@ if [ ! -f "ca.crt" ]; then
     exit 1
 fi
 
-# Format certificate content
-CERT=$(cat ca.crt | sed 's/$/\\n/' | tr -d '\n')
-
 # Upload certificate
 echo "Uploading CA certificate to Cloudflare..."
-curl -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/mtls_certificates" \
-     -H "Authorization: Bearer ${API_TOKEN}" \
-     -H "Content-Type: application/json" \
-     --data "{
-       \"name\": \"${NAME}_ca_cert_for_mtls\",
-       \"certificates\": \"${CERT}\",
-       \"ca\": true,
-       \"type\": \"ca\"
-     }"
+curl -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/mtls_certificates" -H "Authorization: Bearer ${API_TOKEN}" -H "Content-Type: application/json" --data "{\"name\": \"${NAME}_ca_cert_for_mtls\", \"certificates\": \"$(cat ca.crt | sed 's/$/\\n/' | tr -d '\n')\", \"ca\": true, \"type\": \"ca\"}"
 
 echo -e "\nDone!"
